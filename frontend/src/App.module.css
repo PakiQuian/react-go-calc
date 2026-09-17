@@ -1,0 +1,46 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  gap: 1.5rem;
+}
+
+.header {
+  text-align: center;
+  max-width: 34rem;
+}
+
+.title {
+  margin: 0 0 0.35rem;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.footer {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+  max-width: 34rem;
+  line-height: 1.5;
+}
+
+.footer code {
+  font-size: 0.95em;
+}
+
+@media (max-width: 480px) {
+  .page {
+    justify-content: flex-start;
+    padding: 1.5rem 0.75rem;
+  }
+}
