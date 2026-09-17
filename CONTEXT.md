@@ -9,14 +9,28 @@ A named arithmetic function the service can perform. The set of operations is
 **closed**: a request naming anything outside it is rejected before any other
 check runs.
 
-Each Operation has a fixed **arity** — the number of Operands it requires.
-`add`, `subtract`, `multiply`, `divide` and `percentage` are binary; `sqrt` is
-unary; `power` is binary.
+Each Operation has a fixed **arity** — the number of Operands it requires:
+
+| Operation | Arity |
+|---|---|
+| `add`, `subtract`, `multiply`, `divide` | 2 |
+| `power`, `percentage` | 2 |
+| `sqrt` | 1 |
+
+`power` accepts **integer exponents only**. A non-integer exponent is rejected
+rather than approximated; `sqrt` covers the common fractional case exactly.
 
 ## Operand
 
 An input number to an Operation. Operands are ordered: for non-commutative
-Operations (`subtract`, `divide`, `power`) position carries meaning.
+Operations (`subtract`, `divide`, `power`, `percentage`) position carries
+meaning.
+
+Operands are exact decimal quantities, not binary floating-point approximations.
+They are **bounded** — at most 100 significant digits and a magnitude between
+10⁻¹⁰⁰⁰ and 10¹⁰⁰⁰. The underlying representation has no inherent ceiling, so
+the boundary is a deliberate part of the contract rather than a property of a
+number type.
 
 ## Calculation
 
@@ -31,11 +45,18 @@ A Calculation that could not be performed, distinguished by cause:
 - **Unknown operation** — the named Operation is not in the closed set.
 - **Wrong arity** — the Operand count does not match the Operation's arity.
 - **Malformed operand** — a value that is not a number.
+- **Operand out of range** — a well-formed number outside the bounds above.
 - **Undefined result** — the Operation is defined but has no answer for these
   Operands: division by zero, square root of a negative number.
+- **Unrepresentable result** — the answer exists mathematically but is too large
+  to return. `power` can turn small Operands into a result of millions of
+  digits, so the size of the Result is constrained independently of the size of
+  the Operands.
 
-The first three are faults in the *request*. The last is a fault in the
-*mathematics* — the request was well-formed and the service still cannot answer.
+The first four are faults in the *request*. The last two are not: the request was
+well-formed and within bounds, and the service still declines to answer — in one
+case because mathematics has no answer, in the other because the answer will not
+fit.
 
 ## Percentage
 
