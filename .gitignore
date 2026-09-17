@@ -1,0 +1,19 @@
+# Go
+/backend/bin/
+*.out
+coverage.html
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Coverage artifacts (see README for how to regenerate)
+coverage/
+*.cover
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
