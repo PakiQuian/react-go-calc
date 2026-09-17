@@ -1,0 +1,25 @@
+# Build stage: compiles a static binary.
+FROM golang:1.27-alpine AS build
+
+WORKDIR /src
+
+# Dependencies are copied first so the module download layer is reused whenever
+# only application code changes.
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+
+COPY backend/ ./
+
+# CGO_ENABLED=0 produces a static binary, which is what allows the runtime
+# stage to be distroless. -s -w drops the symbol table and DWARF data.
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/api ./cmd/api
+
+# Runtime stage: no shell, no package manager, no libc — just the binary.
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=build /out/api /api
+
+USER nonroot:nonroot
+EXPOSE 8080
+
+ENTRYPOINT ["/api"]

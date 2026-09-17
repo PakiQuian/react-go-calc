@@ -1,0 +1,26 @@
+# Brings up the full stack: http://localhost:3000
+#
+# Two containers, matching the two deployables the assignment describes. Only
+# the web container publishes a port; the API is reachable through nginx, which
+# is what keeps the browser on a single origin.
+name: react-go-calc
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      PORT: 8080
+    restart: unless-stopped
+    # No ports section: the API is deliberately not exposed to the host.
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped

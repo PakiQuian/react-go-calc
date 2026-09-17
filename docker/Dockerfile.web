@@ -1,0 +1,20 @@
+# Build stage: produces the static bundle.
+FROM node:24-alpine AS build
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+# Runtime stage: React has no server of its own, so nginx serves the built
+# files and reverse-proxies /api to the Go service. That makes the browser see
+# a single origin, which is why the application needs no CORS handling.
+FROM nginx:alpine
+
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80

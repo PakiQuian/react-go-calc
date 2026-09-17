@@ -1,0 +1,11 @@
+# Build inputs only: never copy local build output or dependencies into the
+# image, both for speed and so a stale local build cannot end up deployed.
+**/node_modules
+**/dist
+**/coverage
+backend/bin
+.git
+.github
+docs
+*.md
+!README.md
