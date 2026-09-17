@@ -5,6 +5,11 @@ The work was done with Claude Code (Opus 5), used as a design partner first and 
 code generator second — most of the value came from being interrogated about
 decisions before any code existed.
 
+The sections below cover the prompts that **changed the design**. The full list of
+thirty-one decisions, including the three that were later overturned, is in the
+[decision log](#appendix-decision-log) at the end.
+
+
 ---
 
 ## 1. Framing the task
@@ -179,3 +184,65 @@ exist.
 **Decisions were recorded before the code they govern.** `CONTEXT.md` and the
 four ADRs were committed before the first line of Go, so the reasoning is not a
 reconstruction written afterwards.
+
+---
+
+## Appendix: decision log
+
+Every question put to the user during design, in the order it was asked, with the
+decision taken. Questions were asked in rounds: each round covered everything
+whose prerequisites were already settled, and the answers opened the next round.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 0 | Upgrade the toolchain first? | Yes — Go 1.27, Node 24 LTS |
+| 1 | Repo layout | Flat `backend/` + `frontend/`, no workspace tooling |
+| 2 | API shape | One `POST /calculate` taking an operation and an operand array |
+| 3 | Numeric type | Decimal, not `float64` — **revised**, see below |
+| 4 | HTTP layer | Standard library; no router, no validation library |
+| 5 | Frontend scaffold | Vite + React + TypeScript |
+| 6 | Calculator UX | A form, not a keypad — a keypad fights a per-operation REST API |
+| 7 | Go test library | Standard `testing`, table-driven |
+| 8 | Operand wire format | JSON numbers with `UseNumber()` — **revised**, see below |
+| 9 | Error envelope | Structured `{code, message, field}`; 400 for request faults, 422 for undefined results |
+| 10 | Operation set | All seven; `percentage(a,b)` defined as `a/b*100` |
+| 11 | Frontend data layer | Plain `fetch`; axios rejected because throwing on 4xx fights a structured error body |
+| 12 | Styling | CSS Modules |
+| 13 | Docker topology | Compose, two containers; nginx serves the build and proxies `/api` |
+| 14 | Result precision on the wire | Strings both directions, so exact decimals survive `JSON.parse` |
+| 15 | Contract location | Defined twice, Go and Zod; Zod validates form input *and* parses responses |
+| 16 | Frontend test strategy | Inject a fake client; no MSW for a single endpoint |
+| 17 | Coverage reporting | Document the commands, paste the summary, gitignore the artifacts |
+| 18 | Dev workflow | Vite proxy mirrors nginx, so no CORS and no base-URL configuration anywhere |
+| 19 | Go package layout | `cmd/api`, `internal/calculator` (no HTTP), `internal/api` |
+| 20 | Error codes | Six, one per reachable branch — later seven |
+| 21 | Operand bounds | Body size limit plus digit and exponent limits — **revised**, see below |
+| 22 | Module path | `github.com/PakiQuian/react-go-calc` |
+| 23 | Commit history | A sequence that tells the build order, not one commit |
+| 24 | `power` guard | Bound the estimated result size; operand bounds cannot catch this |
+| 25 | Arity-aware form | The UI cannot construct a request the API will reject |
+| 26 | Long results | Shown in full; copy always copies the complete value |
+| 27 | Scope discipline | No extra features; an explicit "out of scope" section instead |
+| 28 | Server hardening | Explicit timeouts and graceful shutdown on SIGTERM |
+| 29 | `sqrt` implementation | Newton-Raphson, not the library function |
+| 30 | Fractional exponents | Rejected rather than approximated |
+
+### The three that were overturned
+
+**#3 — decimal for basic operations, `float64` for `sqrt` and `power`.** Based on
+the assumption that irrational results need a binary float. They don't, and
+`float64` is *less* precise at 15-17 significant digits. Replaced by decimal
+throughout, which was simpler as well as more accurate.
+
+**#8 — JSON numbers on the wire.** Decided before the output side was considered.
+Returning a 20-digit result as a JSON number means the browser's `JSON.parse`
+destroys it on arrival, so strings won both directions. `decimal` accepts either
+form transparently, which also deleted the `UseNumber()` step.
+
+**#21 — cap operand *string length* at 64 characters.** `"1e1000000"` is nine
+characters. The limit had to be on the exponent and significant-digit count after
+parsing, not on the input's length. Benchmarking the corrected bounds then
+exposed the `sqrt` problem behind decision #29.
+
+Each of these was caught by testing the recommendation rather than accepting it —
+two by measurement, one by a follow-up question about the previous answer.
