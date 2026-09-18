@@ -180,21 +180,28 @@ curl -X POST localhost:3000/api/v1/calculate \
 ## Tests
 
 ```bash
-cd backend  && go test ./...                              # 115 tests
+cd backend  && go test ./...                              # 116 tests
 cd frontend && npm test                                   # 85 tests
 
 cd backend  && go test ./... -coverprofile=cover.out && go tool cover -func=cover.out
 cd frontend && npm run test:coverage
 ```
 
-| Package | Statements |
-|---|---|
-| `backend/internal/calculator` | 93.7% |
-| `backend/internal/api` | 95.7% |
-| `frontend/src` | 98.3% |
+201 tests in total.
+
+| Package | Tests | Statements |
+|---|---|---|
+| `backend/internal/calculator` | 79 | 94.6% |
+| `backend/internal/api` | 37 | 95.7% |
+| `frontend/src` | 85 | 98.3% |
+
+**[`COVERAGE.md`](COVERAGE.md)** has the full report: per-function figures for
+the backend, per-file for the frontend, and an account of every uncovered branch
+and why it is uncovered.
 
 `backend/cmd/api` is not covered: it is server wiring, and testing it would mean
-asserting that the standard library works.
+asserting that the standard library works. It is verified by running it instead
+— graceful shutdown was confirmed against the real container.
 
 ---
 

@@ -359,3 +359,14 @@ func TestSqrtAccuracy(t *testing.T) {
 		}
 	})
 }
+
+// The Error method is what appears in server logs, so it carries the code.
+func TestErrorMessage(t *testing.T) {
+	_, err := Calculate("divide", decs(t, "1", "0"))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got, want := err.Error(), "DIVISION_BY_ZERO: division by zero is undefined"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
