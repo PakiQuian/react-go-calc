@@ -21,54 +21,56 @@ and the two commands above regenerate it in seconds.
 
 | Layer | Package | Tests | Statements |
 |---|---|---|---|
-| Backend | `internal/calculator` | 79 | **94.6%** |
-| Backend | `internal/api` | 37 | **95.7%** |
+| Backend | `internal/calculator` | 104 | **94.1%** |
+| Backend | `internal/api` | 54 | **97.6%** |
 | Backend | `cmd/api` | — | 0.0% |
-| Frontend | `src/` | 85 | **98.3%** |
+| Frontend | `src/` | 97 | **98.4%** |
 
-**201 tests.** Frontend branch coverage is 96.3%, function coverage 97.5%.
+**255 tests.** Frontend branch coverage is 94.8%, function coverage 97.5%.
 
 ## Backend, by function
 
 ```
-internal/calculator/calculator.go   Operations             100.0%
-internal/calculator/calculator.go   Arity                  100.0%
-internal/calculator/calculator.go   Calculate              100.0%
-internal/calculator/calculator.go   add                    100.0%
-internal/calculator/calculator.go   subtract               100.0%
-internal/calculator/calculator.go   multiply               100.0%
-internal/calculator/calculator.go   divide                 100.0%
-internal/calculator/calculator.go   percentage             100.0%
-internal/calculator/calculator.go   sqrt                   100.0%
-internal/calculator/calculator.go   power                   95.5%
-internal/calculator/calculator.go   estimatedPowerDigits   100.0%
-internal/calculator/sqrt.go         sqrtNewton              95.7%
-internal/calculator/sqrt.go         initialGuess           100.0%
-internal/calculator/bounds.go       checkOperand           100.0%
-internal/calculator/bounds.go       magnitude               66.7%
-internal/calculator/bounds.go       roundSignificant        83.3%
-internal/calculator/bounds.go       divideSignificant       75.0%
-internal/calculator/errors.go       Error                  100.0%
-internal/calculator/errors.go       newError               100.0%
-internal/calculator/errors.go       operandField           100.0%
-
-internal/api/api.go                 NewRouter              100.0%
-internal/api/api.go                 handleHealth           100.0%
-internal/api/api.go                 handleNotFound         100.0%
-internal/api/api.go                 handleCalculate         94.3%
-internal/api/api.go                 statusFor              100.0%
-internal/api/api.go                 decodeError             87.5%
-internal/api/api.go                 isJSONContentType      100.0%
-internal/api/api.go                 writeError             100.0%
-internal/api/api.go                 writeJSON              100.0%
-internal/api/middleware.go          logRequests            100.0%
-internal/api/middleware.go          recoverPanics          100.0%
-internal/api/middleware.go          WriteHeader            100.0%
-internal/api/middleware.go          Write                   66.7%
-
-cmd/api/main.go                     main                     0.0%
-cmd/api/main.go                     run                      0.0%
-cmd/api/main.go                     port                     0.0%
+cmd/api/main.go:32:                                  main                   0.0%
+cmd/api/main.go:41:                                  run                    0.0%
+cmd/api/main.go:85:                                  port                   0.0%
+internal/api/api.go:43:                              UnmarshalJSON          100.0%
+internal/api/api.go:57:                              decimals               100.0%
+internal/api/api.go:82:                              NewRouter              100.0%
+internal/api/api.go:97:                              handleHealth           100.0%
+internal/api/api.go:111:                             handleNotFound         100.0%
+internal/api/api.go:127:                             handleCalculate        94.9%
+internal/api/api.go:195:                             statusFor              100.0%
+internal/api/api.go:207:                             decodeError            100.0%
+internal/api/api.go:249:                             isJSONContentType      100.0%
+internal/api/api.go:254:                             writeError             100.0%
+internal/api/api.go:258:                             writeJSON              100.0%
+internal/api/middleware.go:18:                       WriteHeader            100.0%
+internal/api/middleware.go:24:                       Write                  66.7%
+internal/api/middleware.go:31:                       logRequests            100.0%
+internal/api/middleware.go:54:                       recoverPanics          100.0%
+internal/calculator/bounds.go:50:                    magnitude              66.7%
+internal/calculator/bounds.go:58:                    checkOperand           100.0%
+internal/calculator/bounds.go:99:                    roundSignificant       85.7%
+internal/calculator/bounds.go:117:                   divideSignificant      87.5%
+internal/calculator/calculator.go:32:                Operations             100.0%
+internal/calculator/calculator.go:42:                Arity                  100.0%
+internal/calculator/calculator.go:52:                Calculate              100.0%
+internal/calculator/calculator.go:76:                add                    100.0%
+internal/calculator/calculator.go:78:                subtract               100.0%
+internal/calculator/calculator.go:80:                multiply               100.0%
+internal/calculator/calculator.go:82:                divide                 100.0%
+internal/calculator/calculator.go:94:                percentage             100.0%
+internal/calculator/calculator.go:104:               sqrt                   100.0%
+internal/calculator/calculator.go:115:               power                  88.9%
+internal/calculator/calculator.go:179:               estimatedPowerDigits   100.0%
+internal/calculator/calculator.go:184:               abs                    100.0%
+internal/calculator/errors.go:31:                    Error                  100.0%
+internal/calculator/errors.go:33:                    newError               100.0%
+internal/calculator/errors.go:37:                    operandField           100.0%
+internal/calculator/sqrt.go:23:                      sqrtNewton             95.7%
+internal/calculator/sqrt.go:59:                      initialGuess           100.0%
+total:                                               (statements)           82.5%
 ```
 
 ## Frontend, by file
@@ -102,22 +104,29 @@ clipboard handler, reached only when `navigator.clipboard.writeText` rejects —
 which happens on an insecure origin or when the user denies permission. The
 failure path does nothing but leave the button label unchanged.
 
-**`divideSignificant`, `roundSignificant`, `magnitude` — 66-83%.** Defensive
-clamps: the branch that caps working precision at `maxDivisionPlaces`, and the
-zero-value guards. They are reachable only from operand combinations the bounds
-check already rejects, so they are unreachable in practice and kept because the
-functions should be correct in isolation.
+**`divideSignificant`, `roundSignificant`, `magnitude`.** An earlier version of this
+file claimed these branches were "unreachable in practice". A review disproved
+two of them: `divideSignificant`'s zero-dividend guard is reached by
+`divide(0, 5)` — the guard is on the *divisor*, so a zero dividend is an
+ordinary request — and `roundSignificant`'s zero guard is reached through
+`power` with a negative exponent. Both now have tests. What remains uncovered
+is `magnitude`'s zero guard, whose every caller pre-checks `IsZero`, and
+`divideSignificant`'s `maxDivisionPlaces` clamp, which needs a magnitude spread
+beyond ±2023 while the operand bounds cap it at ±2000.
 
-**`power` — 95.5%, `sqrtNewton` — 95.7%.** In both cases the uncovered branch is
-an error return from the decimal library that the preceding guards make
-unreachable — `power` checks for a zero base with a negative exponent before
-calling `PowInt32`, and `sqrtNewton` bounds its iteration count against a
-convergence failure that cannot occur for in-range operands.
+**`sqrtNewton`.** The uncovered branch is the `work > maxDivisionPlaces` clamp.
+`work` is `26 - magnitude/2`, which stays within ±526 for any in-range operand,
+so the clamp cannot fire. An earlier version of this file described it as "an
+error return from the decimal library"; `sqrt.go` contains no error return and
+calls no fallible function.
 
-**`handleCalculate` — 94.3%, `decodeError` — 87.5%.** The uncovered paths are
-the `INTERNAL_ERROR` fallback for an error type `Calculate` never returns, and
-one JSON decoder error variant that the other cases already cover. Both exist so
-an unexpected failure cannot escape as a 200.
+**`handleCalculate`, `decodeError`.** The remaining uncovered path is the
+`INTERNAL_ERROR` fallback for an error type `Calculate` never returns, which
+exists so an unexpected failure cannot escape as a 200. An earlier version of
+this file claimed the `decodeError` branches were covered by the other cases; in
+fact two tests were passing through the catch-all and asserting only the code,
+which is identical across all four branches. Those tests now pin the message
+and field, and the inputs that reach each branch are covered.
 
 ## Notes on what the tests actually assert
 

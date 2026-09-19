@@ -147,14 +147,28 @@ func power(o []decimal.Decimal) (decimal.Decimal, error) {
 			digits, MaxPowerResultDigits)
 	}
 
+	// A negative exponent is computed as 1/base^|exp| rather than by the
+	// library's PowInt32, which divides at a fixed 16 decimal *places*
+	// (decimal.PowPrecisionNegativeExponent). That is the same trap
+	// divideSignificant exists to avoid: it silently returns zero for any
+	// result below 1e-17, so power(10, -20) would answer 0 instead of 1e-20.
+	if exp < 0 {
+		magnitude, err := base.PowInt32(int32(-exp))
+		if err != nil {
+			return decimal.Zero, newError(CodeResultTooLarge, "operands",
+				"the result could not be computed: %v", err)
+		}
+		if magnitude.IsZero() {
+			return decimal.Zero, newError(CodeDivisionByZero, operandField(0),
+				"zero raised to a negative exponent is undefined")
+		}
+		return divideSignificant(decimal.NewFromInt(1), magnitude, ResultPrecision), nil
+	}
+
 	result, err := base.PowInt32(int32(exp))
 	if err != nil {
 		return decimal.Zero, newError(CodeResultTooLarge, "operands",
 			"the result could not be computed: %v", err)
-	}
-	if exp < 0 {
-		// A negative exponent divides, so the result is generally inexact.
-		return roundSignificant(result, ResultPrecision), nil
 	}
 	return result, nil
 }

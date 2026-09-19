@@ -6,10 +6,10 @@ status: accepted
 
 Arithmetic is not incidental to this service — it is the entire product, so the
 numeric type is the most consequential decision in the codebase. All operations
-use `shopspring/decimal` rather than `float64`. Requests are decoded with
-`json.Decoder.UseNumber()`, which preserves each operand's original text, and
-that text is parsed directly with `decimal.NewFromString` so no value passes
-through a binary float at any point.
+use `shopspring/decimal` rather than `float64`. Operands are decoded straight
+into `decimal.Decimal`, whose `UnmarshalJSON` parses the raw token text, so no
+value passes through a binary float at any point — including bare JSON numbers,
+which the API also accepts.
 
 ## Considered options
 
@@ -43,11 +43,13 @@ better.
 
 ## Consequences
 
-**Undefined results surface as errors, not as poison values.** Decimal returns a
-typed error where `float64` returns `NaN` or `+Inf` — values that propagate
-silently and then fail at the edge, since `encoding/json` refuses to marshal
-either one. The decimal error arrives at the point of the mistake and maps
-directly onto the "undefined result" rejection, answered with HTTP 422.
+**Undefined results surface as errors, not as poison values.** `float64` returns
+`NaN` or `+Inf`, which propagate silently and then fail at the edge, since
+`encoding/json` refuses to marshal either one. Decimal has the opposite failure
+mode: it *panics* on division by zero rather than returning anything. So each
+such case is guarded explicitly before the library is called, and the guard
+produces the "undefined result" rejection, answered with HTTP 422. Panic
+recovery middleware is the backstop, and its firing means a guard is missing.
 
 **Division requires an explicit precision.** `1/3` does not terminate in base 10
 any more than `0.1` terminates in base 2, so division and non-integer powers take

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
 
-import { OPERATIONS, OPERATION_SPECS } from '../api/operations'
+import { OPERATIONS, OPERATION_SPECS, isOperation } from '../api/operations'
 import type { Operation } from '../api/operations'
 import { validateOperand } from '../api/schemas'
 import { useCalculator } from '../hooks/useCalculator'
@@ -24,10 +24,7 @@ export function CalculatorForm({ calculate }: Props) {
 
   // Only the fields this operation actually uses. Changing to `sqrt` hides the
   // second input rather than sending an operand the API would reject.
-  const activeOperands = useMemo(
-    () => operands.slice(0, spec.arity),
-    [operands, spec.arity],
-  )
+  const activeOperands = operands.slice(0, spec.arity)
 
   function handleOperationChange(next: Operation) {
     setOperation(next)
@@ -68,7 +65,10 @@ export function CalculatorForm({ calculate }: Props) {
             id="operation"
             className={styles.select}
             value={operation}
-            onChange={(event) => handleOperationChange(event.target.value as Operation)}
+            onChange={(event) => {
+              // isOperation narrows the string, so no assertion is needed.
+              if (isOperation(event.target.value)) handleOperationChange(event.target.value)
+            }}
           >
             {OPERATIONS.map((name) => (
               <option key={name} value={name}>

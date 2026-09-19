@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -29,9 +30,36 @@ const codeRequestTooLarge = "REQUEST_TOO_LARGE"
 // codeInternalError is returned only if a handler panics. Reaching it is a bug.
 const codeInternalError = "INTERNAL_ERROR"
 
+// operand wraps decimal.Decimal only to reject JSON null.
+//
+// decimal.Decimal's own UnmarshalJSON accepts null as a no-op, leaving the
+// zero value, so {"operands":["1",null]} would decode as [1, 0] and be
+// answered rather than rejected — and divide(1, null) would report
+// DIVISION_BY_ZERO, blaming the mathematics for a malformed request.
+type operand struct {
+	decimal.Decimal
+}
+
+func (o *operand) UnmarshalJSON(data []byte) error {
+	if string(bytes.TrimSpace(data)) == "null" {
+		return errors.New("operand must be a number, not null")
+	}
+	return o.Decimal.UnmarshalJSON(data)
+}
+
 type calculateRequest struct {
-	Operation string            `json:"operation"`
-	Operands  []decimal.Decimal `json:"operands"`
+	Operation string    `json:"operation"`
+	Operands  []operand `json:"operands"`
+}
+
+// decimals unwraps the operands for the calculator, which has no reason to
+// know about the transport layer's null handling.
+func (r calculateRequest) decimals() []decimal.Decimal {
+	out := make([]decimal.Decimal, len(r.Operands))
+	for i, o := range r.Operands {
+		out[i] = o.Decimal
+	}
+	return out
 }
 
 type calculateResponse struct {
@@ -119,7 +147,19 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := calculator.Calculate(req.Operation, req.Operands)
+	// Decode stops at the end of the first JSON value. Anything after it is a
+	// client mistake, and reporting it is consistent with DisallowUnknownFields
+	// above rather than silently absorbing half the request.
+	if decoder.More() {
+		writeError(w, http.StatusBadRequest, errorBody{
+			Code:    string(calculator.CodeMalformedOperand),
+			Message: "request body contains data after the JSON object",
+		})
+		return
+	}
+
+	operands := req.decimals()
+	result, err := calculator.Calculate(req.Operation, operands)
 	if err != nil {
 		var calcErr *calculator.Error
 		if errors.As(err, &calcErr) {
@@ -141,7 +181,7 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, calculateResponse{
 		Operation: req.Operation,
-		Operands:  req.Operands,
+		Operands:  operands,
 		Result:    result,
 	})
 }
@@ -181,8 +221,11 @@ func decodeError(err error) (int, errorBody) {
 		}
 	}
 
+	// A truncated body yields io.ErrUnexpectedEOF, which is neither a
+	// SyntaxError nor io.EOF, so without this it falls through to the operand
+	// branch below and gets blamed on a field the request does not contain.
 	var syntaxErr *json.SyntaxError
-	if errors.As(err, &syntaxErr) {
+	if errors.As(err, &syntaxErr) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return malformed("request body is not valid JSON", "")
 	}
 

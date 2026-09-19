@@ -370,3 +370,127 @@ func TestErrorMessage(t *testing.T) {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
+
+// decimal.PowInt32 divides negative exponents at a fixed 16 decimal *places*,
+// so any result below 1e-17 comes back as exactly zero. These are the cases
+// that must not regress to 0; power(2, -3) alone does not catch it, because
+// 0.125 is representable at 16 places.
+func TestPowerNegativeExponentKeepsSignificance(t *testing.T) {
+	tests := []struct {
+		name     string
+		operands []string
+		want     string
+	}{
+		{"representable at 16 places", []string{"2", "-3"}, "0.125"},
+		{"at the 16-place boundary", []string{"10", "-16"}, "0.0000000000000001"},
+		{"one past the boundary", []string{"10", "-17"}, "0.00000000000000001"},
+		{"well past the boundary", []string{"10", "-20"}, "0.00000000000000000001"},
+		{"more digits than 16 places holds", []string{"2", "-20"}, "0.00000095367431640625"},
+		{"far below the boundary", []string{"2", "-60"}, "8.673617379884035e-19"},
+		{"large negative exponent", []string{"10", "-500"}, "1e-500"},
+		{"negative base", []string{"-2", "-3"}, "-0.125"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Calculate("power", decs(t, tt.operands...))
+			if err != nil {
+				t.Fatalf("power(%v): %v", tt.operands, err)
+			}
+			if got.IsZero() {
+				t.Fatalf("power(%v) returned zero; want %s", tt.operands, tt.want)
+			}
+			if want := dec(t, tt.want); !got.Equal(want) {
+				t.Errorf("power(%v) = %s, want %s", tt.operands, got.String(), want.String())
+			}
+		})
+	}
+}
+
+// A zero coefficient has no magnitude but can still carry an arbitrary
+// exponent. Such an operand passes the digit and magnitude checks, and
+// printing it allocates memory proportional to the exponent — gigabytes for
+// an exponent near the int32 limit — while rendering as "0".
+func TestZeroWithHugeExponentIsRejected(t *testing.T) {
+	tests := []string{
+		"0e-2147483647",
+		"0e2147483647",
+		"0e-10000000",
+		"0E-1000000",
+	}
+
+	for _, operand := range tests {
+		t.Run(operand, func(t *testing.T) {
+			_, err := Calculate("sqrt", decs(t, operand))
+			assertCode(t, err, CodeOperandOutOfRange)
+		})
+	}
+
+	t.Run("ordinary zero is still accepted", func(t *testing.T) {
+		got, err := Calculate("sqrt", decs(t, "0"))
+		if err != nil {
+			t.Fatalf("sqrt(0): %v", err)
+		}
+		if !got.IsZero() {
+			t.Errorf("sqrt(0) = %s, want 0", got)
+		}
+	})
+
+	t.Run("an operand at the magnitude limit is still accepted", func(t *testing.T) {
+		// 100 digits at magnitude -1000 is stored as 1e-1099, so the exponent
+		// bound must allow more than MaxMagnitude.
+		operand := strings.Repeat("9", MaxSignificantDigits) + "e-1099"
+		if _, err := Calculate("add", decs(t, operand, "1")); err != nil {
+			t.Fatalf("add(%s, 1): %v", operand, err)
+		}
+	})
+}
+
+// Results are documented as carrying ResultPrecision significant digits. The
+// rounding point falls above the decimal point for large results, which
+// decimal.Round cannot express directly.
+func TestInexactResultsAreRoundedToSignificantDigits(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation string
+		operands  []string
+	}{
+		{"divide with a large quotient", "divide", []string{"1e900", "7"}},
+		{"divide at opposite extremes", "divide", []string{"1e900", "1e-900"}},
+		{"percentage with a large result", "percentage", []string{"1e900", "7"}},
+		{"sqrt of a large operand", "sqrt", []string{"2e100"}},
+		{"sqrt at the magnitude limit", "sqrt", []string{"2e900"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Calculate(tt.operation, decs(t, tt.operands...))
+			if err != nil {
+				t.Fatalf("%s(%v): %v", tt.operation, tt.operands, err)
+			}
+			if digits := got.NumDigits(); digits > ResultPrecision {
+				t.Errorf("%s(%v) returned %d significant digits, want at most %d\ngot: %s",
+					tt.operation, tt.operands, digits, ResultPrecision, got.String())
+			}
+		})
+	}
+}
+
+// divide guards the divisor, so a zero dividend is an ordinary in-range
+// request rather than a rejection.
+func TestZeroDividend(t *testing.T) {
+	for _, tt := range []struct{ operation, a, b string }{
+		{"divide", "0", "5"},
+		{"percentage", "0", "10"},
+	} {
+		t.Run(tt.operation, func(t *testing.T) {
+			got, err := Calculate(tt.operation, decs(t, tt.a, tt.b))
+			if err != nil {
+				t.Fatalf("%s(%s, %s): %v", tt.operation, tt.a, tt.b, err)
+			}
+			if !got.IsZero() {
+				t.Errorf("%s(%s, %s) = %s, want 0", tt.operation, tt.a, tt.b, got)
+			}
+		})
+	}
+}

@@ -71,8 +71,11 @@ func run(logger *slog.Logger) error {
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		// Requests still running when the deadline passed are cut off here.
-		return server.Close()
+		// The drain did not finish in time. Cut off whatever is still running,
+		// but report it: a failed drain must not look like a clean exit.
+		logger.Warn("drain deadline exceeded, closing connections",
+			slog.Any("error", err))
+		return errors.Join(err, server.Close())
 	}
 
 	logger.Info("shutdown complete")

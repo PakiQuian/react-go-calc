@@ -15,8 +15,8 @@ export default function App() {
       <CalculatorForm />
 
       <footer className={styles.footer}>
-        Results are exact to 16 significant digits. Division and square roots are
-        rounded; addition, subtraction and multiplication are not.
+        Results carry 16 significant digits. Division, percentage and square root
+        are rounded; addition, subtraction and multiplication are exact.
       </footer>
     </main>
   )

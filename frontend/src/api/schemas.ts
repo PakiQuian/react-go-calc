@@ -15,6 +15,7 @@ import { z } from 'zod'
 /** Limits mirroring the backend. See backend/internal/calculator/bounds.go. */
 export const MAX_SIGNIFICANT_DIGITS = 100
 export const MAX_MAGNITUDE = 1000
+export const MAX_POWER_EXPONENT = 1000
 
 const NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
 
@@ -52,7 +53,8 @@ export function describeNumber(input: string): NumberShape {
 
   // Trailing zeros count toward the digit bound but not toward wholeness:
   // "2.0" is an integer, "1.20" is not.
-  const significant = withoutLeadingZeros.replace(/0+$/, '').length
+  let significant = withoutLeadingZeros.length
+  while (significant > 0 && withoutLeadingZeros[significant - 1] === '0') significant--
 
   return {
     digits: withoutLeadingZeros.length,
@@ -75,11 +77,20 @@ export const operandSchema = z
     return digits === 0 || Math.abs(magnitude) <= MAX_MAGNITUDE
   }, `Number must be between 1e-${MAX_MAGNITUDE} and 1e${MAX_MAGNITUDE}`)
 
-/** A whole number, required for the exponent of `power`. */
-export const wholeNumberSchema = operandSchema.refine(
-  (value) => describeNumber(value).isWhole,
-  'Exponent must be a whole number',
-)
+/**
+ * The exponent of `power`: a whole number, and additionally bounded by value
+ * rather than by magnitude. The backend caps it at MaxPowerExponent, which is
+ * a tighter limit than MAX_MAGNITUDE — without mirroring it here, the form
+ * would happily submit power(2, 5000) for the API to reject.
+ */
+export const wholeNumberSchema = operandSchema
+  .refine((value) => describeNumber(value).isWhole, 'Exponent must be a whole number')
+  .refine(
+    // Safe to use Number here: anything that survives the bounds above and is
+    // still too large lands on Infinity, which fails the comparison.
+    (value) => Math.abs(Number(value)) <= MAX_POWER_EXPONENT,
+    `Exponent must be between -${MAX_POWER_EXPONENT} and ${MAX_POWER_EXPONENT}`,
+  )
 
 export const calculateResponseSchema = z.object({
   operation: z.string(),

@@ -156,7 +156,8 @@ magnitude within 10±¹⁰⁰⁰ — rather than inherited from a type.
 The bounds above were then benchmarked at their own worst case, rather than
 assumed to be sufficient. Two problems surfaced:
 
-- `sqrt` of the largest legal operand took **48 seconds**.
+- `sqrt` of the largest operand then under consideration took **tens of seconds**
+  (33 s for the operand the bounds finally settled on).
 - `power` with an exponent of 1000 produced a **1.1 MB** result from tiny
   operands, showing that bounding the input does not bound the output.
 

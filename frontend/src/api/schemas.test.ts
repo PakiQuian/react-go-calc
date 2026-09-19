@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MAX_MAGNITUDE,
+  MAX_POWER_EXPONENT,
   MAX_SIGNIFICANT_DIGITS,
   calculateResponseSchema,
   describeNumber,
@@ -112,5 +113,36 @@ describe('response schemas', () => {
   it('rejects an error response missing a code', () => {
     const parsed = errorResponseSchema.safeParse({ error: { message: 'nope' } })
     expect(parsed.success).toBe(false)
+  })
+})
+
+// The backend caps the power exponent by value at MaxPowerExponent, which is
+// tighter than MAX_MAGNITUDE. Without mirroring it, the form submits requests
+// the API rejects — the exact drift the duplicated contract risks.
+describe('power exponent bound', () => {
+  it.each(['1000', '-1000', '999', '0', '2'])('accepts %s', (input) => {
+    expect(validateOperand(input, true)).toBeNull()
+  })
+
+  it.each(['1001', '-1001', '5000', '1e4', '1e400', '1e1000'])('rejects %s', (input) => {
+    expect(validateOperand(input, true)).toBe(
+      `Exponent must be between -${MAX_POWER_EXPONENT} and ${MAX_POWER_EXPONENT}`,
+    )
+  })
+})
+
+// describeNumber previously stripped trailing zeros with an unanchored /0+$/,
+// which backtracks quadratically on a long interior zero run: 50k characters
+// froze the tab for over two seconds.
+describe('describeNumber performance', () => {
+  it('handles a long interior zero run in linear time', () => {
+    const pathological = '1' + '0'.repeat(50_000) + '1'
+
+    const start = performance.now()
+    const shape = describeNumber(pathological)
+    const elapsed = performance.now() - start
+
+    expect(shape.digits).toBe(50_002)
+    expect(elapsed).toBeLessThan(100)
   })
 })

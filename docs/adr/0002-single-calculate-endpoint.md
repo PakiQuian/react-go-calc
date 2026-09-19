@@ -25,7 +25,7 @@ design or testing.
 ## Consequences
 
 **Operations are data, not code.** Dispatch is a `map[string]operation` where
-each entry carries its arity, its bounds and its function. Arity checking is
+each entry carries its arity and its function. Arity checking is
 therefore a table lookup rather than a per-handler `if`, which is what makes the
 two-stage validation order meaningful: an unknown operation never reaches arity
 checking, so there is no ambiguity about which error a bad request produces.
@@ -34,9 +34,11 @@ checking, so there is no ambiguity about which error a bad request produces.
 the rest take two, expressed as a number in the table rather than as a different
 request type or a nullable second field.
 
-**The frontend consumes the same table.** The form hides its second input for
-`sqrt`, driven by the same arity rule, so the UI cannot construct a request the
-API will reject.
+**The frontend mirrors the table.** The form hides its second input for `sqrt`,
+driven by the same arity rule, so the arity concept is visible in both layers.
+The mirror is hand-maintained and partial: it covers arity, operand shape and
+the `power` exponent bound, but the UI is a convenience, not a guarantee — the
+API remains the only authority, and a request can still be rejected server-side.
 
 **One URL for every operation** is slightly less RESTful in the strictest
 reading, since the operation is in the body rather than the path. The trade is

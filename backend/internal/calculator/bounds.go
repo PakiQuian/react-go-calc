@@ -33,6 +33,12 @@ const (
 	// root. Exact operations are never rounded.
 	ResultPrecision = 16
 
+	// maxExponent bounds an operand's stored exponent, which is a separate
+	// quantity from its magnitude. A value in range can legitimately carry an
+	// exponent of MaxMagnitude plus its own digits — 100 digits at magnitude
+	// -1000 is stored as 1e-1099 — so the limit is the sum of the two.
+	maxExponent = MaxMagnitude + MaxSignificantDigits
+
 	// maxDivisionPlaces bounds the working precision of a single division, so
 	// that operands at opposite ends of the magnitude range cannot force an
 	// unbounded computation.
@@ -55,6 +61,20 @@ func checkOperand(d decimal.Decimal, index int) *Error {
 			"operand has %d significant digits, the maximum is %d",
 			digits, MaxSignificantDigits)
 	}
+
+	// The exponent is checked before the zero short-circuit below, and
+	// separately from magnitude, because a zero coefficient has no magnitude
+	// but can still carry an arbitrary exponent. "0e-2147483647" has one
+	// digit, is zero, and reports magnitude 0, so it would otherwise pass
+	// every check — and printing it allocates gigabytes, since
+	// decimal.String expands the exponent to a run of zeros before trimming
+	// it back to "0".
+	if exp := int(d.Exponent()); exp > maxExponent || exp < -maxExponent {
+		return newError(CodeOperandOutOfRange, operandField(index),
+			"operand exponent 1e%d is outside the accepted range 1e-%d to 1e%d",
+			exp, maxExponent, maxExponent)
+	}
+
 	if d.IsZero() {
 		return nil
 	}
@@ -69,15 +89,23 @@ func checkOperand(d decimal.Decimal, index int) *Error {
 // roundSignificant rounds to a number of significant digits rather than decimal
 // places. decimal.Round counts places, which silently flattens small values to
 // zero: rounding 1e-500 to 16 places gives 0.
+//
+// The rounding point can fall above the decimal point as well as below it. A
+// result of magnitude 1000 needs rounding 984 places to the *left*, which
+// decimal.Round cannot express — clamping to zero places there would return
+// every digit of a 1001-digit number under the name of 16-digit precision.
+// Shifting the value across the decimal point, rounding, and shifting back
+// keeps one rounding rule for every magnitude.
 func roundSignificant(d decimal.Decimal, digits int) decimal.Decimal {
 	if d.IsZero() {
 		return d
 	}
 	places := digits - magnitude(d) - 1
-	if places < 0 {
-		places = 0
+	if places >= 0 {
+		return d.Round(int32(places))
 	}
-	return d.Round(int32(places))
+	shift := int32(-places)
+	return d.Shift(-shift).Round(0).Shift(shift)
 }
 
 // divideSignificant divides to a fixed number of significant digits.

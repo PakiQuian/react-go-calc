@@ -13,6 +13,13 @@ services:
     environment:
       PORT: 8080
     restart: unless-stopped
+    # Arbitrary-precision arithmetic has no inherent ceiling, so the operand
+    # bounds are the real defence — this caps the blast radius if one is ever
+    # missed, keeping a bad request from reaching host memory.
+    mem_limit: 256m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
     # No ports section: the API is deliberately not exposed to the host.
 
   web:

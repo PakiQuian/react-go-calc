@@ -278,3 +278,122 @@ func TestPanicRecovery(t *testing.T) {
 		t.Error("panic detail leaked into the response body")
 	}
 }
+
+// decimal.Decimal's UnmarshalJSON treats null as a no-op, leaving a zero
+// value, so an unguarded decode answers {"operands":["1",null]} instead of
+// rejecting it — and reports DIVISION_BY_ZERO for divide(1, null), blaming
+// the mathematics for a malformed request.
+func TestNullOperandsAreRejected(t *testing.T) {
+	tests := []string{
+		`{"operation":"add","operands":[null,null]}`,
+		`{"operation":"add","operands":["1",null]}`,
+		`{"operation":"divide","operands":["1",null]}`,
+		`{"operation":"sqrt","operands":[null]}`,
+	}
+
+	for _, body := range tests {
+		t.Run(body, func(t *testing.T) {
+			recorder := post(t, body)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body: %s", recorder.Code, recorder.Body)
+			}
+			if code := errorFrom(t, recorder).Code; code != "MALFORMED_OPERAND" {
+				t.Errorf("code = %q, want MALFORMED_OPERAND", code)
+			}
+		})
+	}
+}
+
+// Decode stops at the end of the first JSON value, so without an explicit
+// check the rest of the body is silently discarded.
+func TestTrailingDataIsRejected(t *testing.T) {
+	tests := []string{
+		`{"operation":"add","operands":["1","2"]} trailing garbage`,
+		`{"operation":"add","operands":["1","2"]}{"operation":"multiply","operands":["3","4"]}`,
+		`{"operation":"add","operands":["1","2"]}[]`,
+	}
+
+	for _, body := range tests {
+		t.Run(body, func(t *testing.T) {
+			recorder := post(t, body)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body: %s", recorder.Code, recorder.Body)
+			}
+			if code := errorFrom(t, recorder).Code; code != "MALFORMED_OPERAND" {
+				t.Errorf("code = %q, want MALFORMED_OPERAND", code)
+			}
+		})
+	}
+}
+
+// Asserting only the code cannot distinguish the four decodeError branches,
+// since all of them report MALFORMED_OPERAND. These pin the message, which is
+// what the client actually reads.
+func TestDecodeErrorMessages(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		wantMessage string
+		wantField   string
+	}{
+		{"truncated body", `{"operation":`,
+			"request body is not valid JSON", ""},
+		{"invalid syntax", `{"operation":]}`,
+			"request body is not valid JSON", ""},
+		{"operation has the wrong type", `{"operation":5,"operands":["1","2"]}`,
+			"field operation has the wrong type", "operation"},
+		{"operands is not an array", `{"operation":"add","operands":"12"}`,
+			"field operands has the wrong type", "operands"},
+		{"empty body", ``,
+			"request body is empty", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := errorFrom(t, post(t, tt.body))
+
+			if body.Code != "MALFORMED_OPERAND" {
+				t.Errorf("code = %q, want MALFORMED_OPERAND", body.Code)
+			}
+			if body.Message != tt.wantMessage {
+				t.Errorf("message = %q, want %q", body.Message, tt.wantMessage)
+			}
+			if body.Field != tt.wantField {
+				t.Errorf("field = %q, want %q", body.Field, tt.wantField)
+			}
+		})
+	}
+}
+
+// The zero-exponent operand is rejected before it reaches the response
+// encoder, where printing it would allocate memory proportional to the
+// exponent.
+func TestHugeExponentOperandIsRejected(t *testing.T) {
+	recorder := post(t, `{"operation":"sqrt","operands":["0e-2147483647"]}`)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body: %s", recorder.Code, recorder.Body)
+	}
+	if code := errorFrom(t, recorder).Code; code != "OPERAND_OUT_OF_RANGE" {
+		t.Errorf("code = %q, want OPERAND_OUT_OF_RANGE", code)
+	}
+}
+
+// power with a negative exponent must not collapse to zero over HTTP either.
+func TestNegativeExponentOverHTTP(t *testing.T) {
+	recorder := post(t, `{"operation":"power","operands":["10","-20"]}`)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", recorder.Code, recorder.Body)
+	}
+
+	var payload calculateResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if want := "0.00000000000000000001"; payload.Result.String() != want {
+		t.Errorf("result = %s, want %s", payload.Result.String(), want)
+	}
+}

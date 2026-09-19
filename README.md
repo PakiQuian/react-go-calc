@@ -1,4 +1,4 @@
-# Calculator
+| `frontend/src` | 97 | 98.4% || `backend/internal/api` | 54 | 97.6% || `backend/internal/calculator` | 104 | 94.1% |# Calculator
 
 A full-stack calculator: a React frontend over a Go REST service that performs
 all arithmetic with exact decimals.
@@ -127,12 +127,15 @@ Every failure returns the same envelope:
 | `UNKNOWN_OPERATION` | 400 | operation is not one of the seven |
 | `INVALID_OPERAND_COUNT` | 400 | operand count does not match the arity |
 | `MALFORMED_OPERAND` | 400 | unparseable number, bad JSON, unknown field |
-| `OPERAND_OUT_OF_RANGE` | 400 | outside the accepted bounds (see below) |
+| `OPERAND_OUT_OF_RANGE` | 400 | outside the accepted bounds, or a `power` exponent that is fractional or over 1000 |
 | `REQUEST_TOO_LARGE` | 413 | request body over 1 KB |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | `Content-Type` is not `application/json` |
 | `DIVISION_BY_ZERO` | 422 | `divide(a, 0)`, `percentage(a, 0)`, `0^-n` |
 | `NEGATIVE_SQRT` | 422 | square root of a negative number |
 | `RESULT_TOO_LARGE` | 422 | the answer exists but is too large to return |
+| `METHOD_NOT_ALLOWED` | 405 | wrong method for the route (with an `Allow` header) |
+| `NOT_FOUND` | 404 | no such route |
+| `INTERNAL_ERROR` | 500 | a handler panicked; reaching this is a bug |
 
 **400 versus 422** is a deliberate split. The 400s are faults in the *request*:
 something about it is wrong. The 422s are not — the request was well formed and
@@ -159,7 +162,7 @@ curl -X POST localhost:3000/api/v1/calculate \
 curl -i -X POST localhost:3000/api/v1/calculate \
   -H 'Content-Type: application/json' \
   -d '{"operation":"divide","operands":["1","0"]}'
-# HTTP/1.1 422 Unprocessable Content
+# HTTP/1.1 422 Unprocessable Entity
 # {"error":{"code":"DIVISION_BY_ZERO","message":"division by zero is undefined","field":"operands[1]"}}
 
 # Wrong operand count for a unary operation
@@ -180,20 +183,20 @@ curl -X POST localhost:3000/api/v1/calculate \
 ## Tests
 
 ```bash
-cd backend  && go test ./...                              # 116 tests
-cd frontend && npm test                                   # 85 tests
+(cd backend  && go test ./...)     # 158 tests
+(cd frontend && npm test)         # 97 tests, after npm install
 
-cd backend  && go test ./... -coverprofile=cover.out && go tool cover -func=cover.out
-cd frontend && npm run test:coverage
+(cd backend  && go test ./... -coverprofile=cover.out && go tool cover -func=cover.out)
+(cd frontend && npm run test:coverage)
 ```
 
-201 tests in total.
+255 tests in total.
 
 | Package | Tests | Statements |
 |---|---|---|
-| `backend/internal/calculator` | 79 | 94.6% |
-| `backend/internal/api` | 37 | 95.7% |
-| `frontend/src` | 85 | 98.3% |
+| `backend/internal/calculator` | 104 | 94.1% |
+| `backend/internal/api` | 54 | 97.6% |
+| `frontend/src` | 97 | 98.4% |
 
 **[`COVERAGE.md`](COVERAGE.md)** has the full report: per-function figures for
 the backend, per-file for the frontend, and an account of every uncovered branch
@@ -283,13 +286,19 @@ configuration.
 Arbitrary precision has no natural ceiling; `decimal` is bounded by memory, not
 by a type. `{"operands":["1e1000000","1"]}` is a 45-byte request that takes 35 ms
 of CPU and produces a million-digit result, because addition has to align
-exponents. So operands are capped at **100 significant digits** and a magnitude
-within **1e±1000**, with a 1 KB body limit in front.
+exponents. So operands are capped at **100 significant digits** and a magnitude within
+**1e±1000**, with a 1 KB body limit in front. The exponent is bounded
+separately from the magnitude, because a zero coefficient has no magnitude but
+can still carry one: `0e-2147483647` is thirteen bytes, reports magnitude 0,
+and would allocate gigabytes to print itself as `0`.
 
-Bounding the input is not sufficient, though: `power(10, 1000000)` has tiny
-operands and a million-digit *result*. `power` therefore estimates its result
-size before computing anything, and `RESULT_TOO_LARGE` is a distinct kind of
-rejection because of it.
+`power` carries two further limits: the exponent must be a whole number no
+larger than **1000**, and the estimated result is capped at **2100 digits**.
+
+Bounding the input is not sufficient, though: `power(1e100, 100)` has operands
+well inside every bound and a result of forty thousand digits. `power`
+therefore estimates its result size before computing anything, and
+`RESULT_TOO_LARGE` is a distinct kind of rejection because of it.
 
 ### Validation lives in both layers, for different reasons
 
@@ -309,7 +318,9 @@ A keypad implies local expression state and immediate feedback, which fights a
 REST API that performs one operation per round trip. The form makes the API and
 its validation the visible subject, and it is directly testable. The operand
 fields are driven by the same arity the backend enforces, so choosing `sqrt`
-hides the second field: the UI cannot construct a request the API would reject.
+hides the second field, and the client mirrors the operand bounds and the
+`power` exponent limit. That mirror is a convenience, not a guarantee: the
+backend is the only authority, and it re-validates everything.
 
 ---
 
