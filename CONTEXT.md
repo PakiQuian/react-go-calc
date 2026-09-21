@@ -32,6 +32,12 @@ They are **bounded** — at most 100 significant digits and a magnitude between
 the boundary is a deliberate part of the contract rather than a property of a
 number type.
 
+How an Operand is *written* is bounded too, separately from what it is worth.
+Zero has no magnitude, so a magnitude limit alone says nothing about `0e-2147483647`
+— a value of zero, written with an extreme exponent. Such an Operand is rejected:
+the cost of handling a number follows the notation it arrives in, not only the
+quantity it denotes.
+
 ## Calculation
 
 One Operation applied to its Operands. A Calculation either produces a **Result**

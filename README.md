@@ -129,13 +129,19 @@ Every failure returns the same envelope:
 | `MALFORMED_OPERAND` | 400 | unparseable number, bad JSON, unknown field |
 | `OPERAND_OUT_OF_RANGE` | 400 | outside the accepted bounds, or a `power` exponent that is fractional or over 1000 |
 | `REQUEST_TOO_LARGE` | 413 | request body over 1 KB |
-| `UNSUPPORTED_MEDIA_TYPE` | 415 | `Content-Type` is not `application/json` |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | a `Content-Type` was sent and is not `application/json` |
 | `DIVISION_BY_ZERO` | 422 | `divide(a, 0)`, `percentage(a, 0)`, `0^-n` |
 | `NEGATIVE_SQRT` | 422 | square root of a negative number |
 | `RESULT_TOO_LARGE` | 422 | the answer exists but is too large to return |
 | `METHOD_NOT_ALLOWED` | 405 | wrong method for the route (with an `Allow` header) |
 | `NOT_FOUND` | 404 | no such route |
 | `INTERNAL_ERROR` | 500 | a handler panicked; reaching this is a bug |
+
+A request with **no** `Content-Type` header at all is accepted; only a header
+that is present and names something other than JSON is refused. Note that
+`curl -d` sets `application/x-www-form-urlencoded` for you, so the examples
+below pass `-H 'Content-Type: application/json'` explicitly — without it they
+would get a 415.
 
 **400 versus 422** is a deliberate split. The 400s are faults in the *request*:
 something about it is wrong. The 422s are not — the request was well formed and
